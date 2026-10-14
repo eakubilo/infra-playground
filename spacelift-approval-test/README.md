@@ -1,19 +1,30 @@
-# Approval note live test
+# Tracked-run review note test
 
-This directory contains a minimal Terraform configuration with no providers or infrastructure resources.
+Minimal Terraform configuration with no providers or infrastructure resources.
 
-Spacelift stack: https://cakubilo.app.us.spacelift.io/stack/approve-with-note-live-test
+Stack: https://cakubilo.app.us.spacelift.io/stack/approve-with-note-live-test
 
-Approval policy: `approve_with_note test` (Rego v1).
+This test separates a bot's explanatory review comment from the actual approval gate. It does not use `approve_with_note` to display a blocking message, because that rule approves the run.
+
+The approval policy allows TRACKED runs to plan, then requires a review from the `DataInfra` team at UNCONFIRMED/PENDING_REVIEW. `DataInfra` is the illustrative test team; configure the real team before production use. The provided API key acts as the bot for this test. A bot review without that team must leave the policy undecided.
 
 ```rego
 package spacelift
-
-approve_with_note contains note if {
-  input.run.type == "TASK"
-  input.run.command == "ls"
-  note := "approve_with_note test: approved the ls task"
+sample := true
+needs_review if {
+  input.run.type == "TRACKED"
+  input.run.state in {"UNCONFIRMED", "PENDING_REVIEW"}
+}
+approve if {
+  input.run.type == "TRACKED"
+  not needs_review
+}
+approve if {
+  input.run.type == "TRACKED"
+  needs_review
+  some review in input.reviews.current.approvals
+  "DataInfra" in review.session.teams
 }
 ```
 
-To repeat: open the stack, create a task with the exact command `ls`, and inspect the approval policy result in the run. Other commands do not match this policy.
+Trigger a tracked run. Once it awaits review, submit an APPROVE review through the bot API key with an explanatory note. Verify the review is stored, `needsApproval` stays true, and `canConfirm` stays false. Only a qualifying DataInfra reviewer should satisfy the policy. The bot must never belong to that team. No automatic note-posting service is installed by this test.

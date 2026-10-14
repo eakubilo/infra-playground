@@ -1,12 +1,28 @@
-# Tracked-run review note test
+# Two-policy tracked-run test
 
 Minimal Terraform configuration with no providers or infrastructure resources.
 
 Stack: https://cakubilo.app.us.spacelift.io/stack/approve-with-note-live-test
 
-This test separates a bot's explanatory review comment from the actual approval gate. It does not use `approve_with_note` to display a blocking message, because that rule approves the run.
+Two APPROVAL policies are attached:
 
-The approval policy allows TRACKED runs to plan, then requires a review from the `DataInfra` team at UNCONFIRMED/PENDING_REVIEW. `DataInfra` is the illustrative test team; configure the real team before production use. The provided API key acts as the bot for this test. A bot review without that team must leave the policy undecided.
+1. **Tracked run auto-approval with note** returns `approve_with_note` for TRACKED runs. Spacelift records an `auto-approved-by-approval-policy` review with: `Auto-approved: this tracked run passed the automated test checks.`
+2. **Tracked run DataInfra manual approval** permits planning, then requires a review whose `session.teams` contains `DataInfra` when the tracked run is UNCONFIRMED/PENDING_REVIEW. The auto-generated review does not substitute for this team approval.
+
+The first rule is a demonstration that approves every tracked run, not a substantive plan safety check. DataInfra is the illustrative team; configure a real authorized team before production use. Sampling is enabled for both test policies.
+
+Auto-approval policy:
+
+```rego
+package spacelift
+sample := true
+approve_with_note contains note if {
+  input.run.type == "TRACKED"
+  note := "Auto-approved: this tracked run passed the automated test checks."
+}
+```
+
+Manual approval policy:
 
 ```rego
 package spacelift
@@ -27,4 +43,4 @@ approve if {
 }
 ```
 
-Trigger a tracked run. Once it awaits review, submit an APPROVE review through the bot API key with an explanatory note. Verify the review is stored, `needsApproval` stays true, and `canConfirm` stays false. Only a qualifying DataInfra reviewer should satisfy the policy. The bot must never belong to that team. No automatic note-posting service is installed by this test.
+Trigger a tracked run, inspect the automatic review note, then verify the run still needs the separate DataInfra approval after planning. Autodeploy is off. No external bot service is required for the automatic note.
